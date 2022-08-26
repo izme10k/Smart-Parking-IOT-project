@@ -1,0 +1,215 @@
+#include <Wire.h>                    
+#include <Servo.h>                  //servo library
+#include <LiquidCrystal_I2C.h>     //LCD library
+LiquidCrystal_I2C lcd(0x27,16,2);
+
+#include <SoftwareSerial.h>     //Software Serial library
+SoftwareSerial sendToEsp(5, 6); //Pin 5 and 6 act as RX and TX. Connect them to TX and RX of ESP8266 
+
+Servo myservo;
+// servo on Pin 3
+// servo will start at 0 angle
+int pos = 0;
+
+
+// every thing to do with Parking spt1
+int park0White=13;
+int park0Sensor=12;
+int park0Red=11;
+int park0prev=true;
+
+
+// every thing to do with Parking spt2
+int park1White=10;
+int park1Sensor=9;
+int park1Red=8;
+int park1prev=true;
+
+
+// every thhing to do with the gate 
+int IRGATE2 = 4 ;    //the inside sensor 
+int IRGATE1 = 2;    // the outside sensor
+int Slot = 2;       //Enter Total number of parking Slots
+int flag1 = 0;
+int flag2 = 0;
+
+
+void setup()
+{
+    //to begin lcd 
+    lcd.begin();  
+    lcd.backlight();
+
+// sensor 1 
+    pinMode(park0Sensor, INPUT);
+    pinMode(park0White,OUTPUT);
+    pinMode(park0Red,OUTPUT);
+
+// sensor 2
+    pinMode(park1Sensor, INPUT);
+    pinMode(park1White,OUTPUT);
+    pinMode(park1Red,OUTPUT);
+
+//  start servo
+    myservo.attach(3);
+    myservo.write(100);
+
+// start for lcd
+    lcd.setCursor (0,0);
+    lcd.print("   ARDUINO  ");
+    lcd.setCursor (0,1);
+    lcd.print(" PARKING SYSTEM ");
+    delay (1000);
+    lcd.clear();
+
+// to begin communication for serial and ESP
+    Serial.begin(115200);
+    sendToEsp.begin(115200);
+      while (!Serial) {; // wait for serial port to connect. Needed for native USB port only
+}
+
+}
+
+
+void loop()
+{
+  //if you send free 0 park 0 will be freed
+  //if you send ocupie 0 park 0 will be ocupied
+  //we dont do reservations from arduino only from android
+
+  //replace Serial.readString() with command after sensor reading
+  //if(Serial.available())
+  //  sendToEsp.println(Serial.readString());
+
+// to make sure that serial and ESP are working and available
+  if(sendToEsp.available()){
+    String tempt=sendToEsp.readString();
+    if(!tempt.startsWith("free") && !tempt.startsWith("ocupie") ){
+      char pNo=tempt[1];
+      char pState=tempt[2];
+      changeStates(pNo,pState);
+
+    }
+
+    // to print on ESP from arduino for sensor 1
+  int temp=digitalRead(park0Sensor);
+    if(temp!=park0prev){
+    if(temp==0){
+      sendToEsp.println("ocupie 0");
+      }
+     else{
+      sendToEsp.println("free 0");
+      }
+      park0prev=temp;
+    }
+
+// to print on ESP from arduino for sensor 2
+   temp=digitalRead(park1Sensor);
+    if(temp!=park1prev){
+    if(temp==0){
+      sendToEsp.println("ocupie 1");
+      }
+     else{
+      sendToEsp.println("free 1");
+      }
+      park1prev=temp;
+    }
+
+  }
+
+
+// to control the sensor 1 on the gate with the servo
+    if (digitalRead (IRGATE2) == HIGH && flag1==0){ //the inside sensor
+    if(Slot>0){flag1=1;
+    if(flag2==0){myservo.write(0); Slot = Slot-1;}
+    }
+    else
+    {
+    //for (pos = 45; pos <= 0; pos += 10) { // goes from 0 degrees to 180 degrees // with increse of 10
+    //myservo.write(pos);                   // tell servo to go to position in variable 'pos'
+    //delay(50);                            // waits 50ms for the servo to reach the position
+
+    // to let servo write on lcd 
+    lcd.setCursor (0,0);
+    lcd.print("  SORRY  ");
+    lcd.setCursor (0,1);
+    lcd.print(" Parking Full ");
+    delay (300);
+    lcd.clear();
+
+}
+}
+
+
+// to control the sensor 2 on the gate with the servo // the outside sensor
+    if (digitalRead(IRGATE1) == LOW && flag2==0){flag2=1;
+    if(flag1==0){myservo.write(0); Slot = Slot+1;}
+    }
+    if(flag1==1 && flag2==1){
+      delay (1000);
+    ///for (pos = 180; pos >= 0; pos -= 1) {  // goes from 180 degrees to 0 degrees // with decrese of 10 
+    myservo.write(100);                       // tell servo to go to position in variable 'pos'
+    delay(50);                               // waits 50ms for the servo to reach the position
+    
+    flag1=0 , flag2=0 ;
+    }
+
+    // to let servo write on lcd
+    lcd.setCursor (0,0);
+    lcd.print("  WELCOME!  ");
+    lcd.setCursor (0,1);
+    lcd.print("Slot Left: ");
+    lcd.print(Slot);
+    
+}
+
+
+
+// to change states on firebase
+void changeStates(char pNo,char pState){
+
+
+// change states on sensor 1
+ if(pNo=='1'){
+      if(pState=='0'){
+
+
+
+     Serial.println("park1 is free");
+      digitalWrite(park0White,HIGH);
+      digitalWrite(park0Red,LOW);
+  }
+  
+     else {
+        Serial.println("park1 is not free");
+        digitalWrite(park0Red,HIGH);
+      digitalWrite(park0White,LOW);}
+
+
+
+ }
+
+
+// change states on sensor 2
+   else if(pNo=='2'){
+      if(pState=='0'){
+
+
+
+     Serial.println("park2 is free");
+      digitalWrite(park1White,HIGH);
+      digitalWrite(park1Red,LOW);}
+      
+
+
+
+    else {
+      Serial.println("park2 is not free");
+      digitalWrite(park1Red,HIGH);
+      digitalWrite(park1White,LOW);}
+      
+        
+      delay(50);
+   }
+}
+  
