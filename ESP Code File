@@ -1,0 +1,171 @@
+#include <ESP8266Firebase.h>
+#include <ESP8266WiFi.h>
+#include <Firebase_ESP_Client.h>
+
+//wifi configuration data
+#define _SSID "10k's iPhone"
+#define _PASSWORD "12345678"
+
+// the token is here to connect to firebase as a valid machine.
+#include "addons/TokenHelper.h"
+
+// this library has some functions to help when connecting to realtime database.
+#include "addons/RTDBHelper.h"
+
+// api key to connect to firebase
+#define API_KEY "AIzaSyA0wO8pQrKsgO5gUehVtgnfaRj_PGAdbEE"
+
+//we need a valid user for firebase authentication
+//we created an admin email for esp module
+#define USER_EMAIL "esp@admin.esp"
+#define USER_PASSWORD "12345678"
+
+//the realtime database url
+#define DATABASE_URL "https://parkingsystem-877cb-default-rtdb.firebaseio.com/"
+
+//initilize firebase instances
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+int availableCount;
+
+unsigned long sendDataPrevMillis = 0;
+unsigned long count = 0;
+
+void setup() {
+  availableCount=2;
+  fbdo.setResponseSize(2048);
+  config.timeout.serverResponse = 10 * 1000;
+  
+  Serial.begin(115200);
+
+  //disconnect wifi then reconnect
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(1000);
+
+  //connect to wifi
+  Serial.println();
+  Serial.println();
+  Serial.println("connecting to: ");
+  Serial.println(_SSID);
+  WiFi.begin(_SSID,_PASSWORD);
+
+  //while wifi not connected stay in loop
+  while(WiFi.status()!=WL_CONNECTED){
+    delay(500);
+    Serial.print("-");
+   }
+   Serial.println("connected");
+
+   //initialize firebase instances
+   config.api_key = API_KEY;
+   auth.user.email = USER_EMAIL;
+   auth.user.password = USER_PASSWORD;
+   config.database_url = DATABASE_URL;
+   
+   // Assign the callback function for the long running token generation task
+   //assign actions when a response is recieved
+   config.token_status_callback = tokenStatusCallback;
+
+  // Assign the maximum retry of token generation
+  config.max_token_generation_retry = 5;
+
+  //begin firebace instance
+  Firebase.begin(&config, &auth);
+
+ delay(1000);
+}
+
+void loop() {
+
+  //if we get a valid serial message 
+  if(Serial.available()){
+    //store serial reading into temp
+    String temp=Serial.readString();
+    //if temp starts with free we free the number given
+    if(temp.startsWith("free"))
+      freePark(temp.substring(temp.indexOf(" ")+1,temp.indexOf(" ")+2));
+    //else if it starts with ocupie then we ocupie the number givin
+    else if(temp.startsWith("ocupie"))
+      ocupiePark(temp.substring(temp.indexOf(" ")+1,temp.indexOf(" ")+2));
+   }
+
+  //we need to read all parks data if a park is reserved 
+  //send data to arduino to make park red
+  
+  String path="/parks/park1/status/0/name";
+  String fields[]={"name","state","taken by","time"};
+  String message;
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > 1500 || sendDataPrevMillis == 0)){
+      sendDataPrevMillis = millis();
+      for(int i=0;i<2;i++){
+        //Serial.printf("Get string... %s\n", Firebase.RTDB.getString(&fbdo, F("/parks/park1/status/0/name")) ? fbdo.to<const char *>() : fbdo.errorReason().c_str());
+        String ch="";
+        if(Firebase.RTDB.getString(&fbdo,"/parks/park1/status/"+String(i)+"/name/")){
+          ch+=String(fbdo.to<const char *>());
+       delay(100);
+          }
+          
+        if(Firebase.RTDB.getString(&fbdo,"/parks/park1/status/"+String(i)+"/state/")){
+          ch+=String(convert(fbdo.to<const char *>()));
+          delay(100);
+          //Serial.print(",");
+          }
+        Serial.println(ch);
+        //if(Firebase.RTDB.getString(&fbdo,"/parks/park1/status/"+String(i)+"/taken by/")){
+         // Serial.print(fbdo.to<const char *>());
+         // Serial.print(",");
+          //}
+
+        //if(Firebase.RTDB.getString(&fbdo,"/parks/park1/status/"+String(i)+"/time/"))
+          //Serial.println(fbdo.to<const char *>());
+   delay(100);
+   }
+    
+   delay(100); 
+ }
+  
+  
+}
+String convert(const char* ch){
+  
+  if(ch[0]=='f')
+    return "0";
+  if(ch[0]=='r')
+    return "1";
+  if(ch[0]=='o')
+    return "2";
+  return "null";
+  }
+
+//to free the park we set the state to free and the taken by to none
+void freePark(String parkNo){
+ 
+  //set paths and available parks count
+  String availablePath="/parks/park1/available";
+  String statePath="/parks/park1/status/"+parkNo+"/state";
+  String takenByPath="/parks/park1/status/"+parkNo+"/taken by";
+
+  //update data and print to Serial
+  Firebase.RTDB.setString(&fbdo, statePath, "free");
+  Firebase.RTDB.setString(&fbdo, takenByPath, "none");
+  Firebase.RTDB.setInt(&fbdo, availablePath, availableCount++);
+  delay(100);
+  }
+  
+//to ocupie the park we set the state to ocupied and the taken by to parked car(we dont need userId here)
+void ocupiePark(String parkNo){
+  
+  //set paths and available parks count
+  String availablePath="/parks/park1/available";
+  String statePath="/parks/park1/status/"+parkNo+"/state";
+  String takenByPath="/parks/park1/status/"+parkNo+"/taken by";
+
+  //update data and print to Serial
+  Firebase.RTDB.setString(&fbdo, statePath, "ocupied");
+  Firebase.RTDB.setString(&fbdo, takenByPath, "parked car");
+  Firebase.RTDB.setInt(&fbdo, availablePath, --availableCount);
+delay(100);
+  }
