@@ -1,0 +1,91 @@
+package com.example.smartparking;
+
+
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.content.Intent;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.Toast;
+
+import com.google.android.gms.tasks.OnCompleteListener;
+
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.firebase.auth.FirebaseAuth;
+
+public class MainActivity extends AppCompatActivity {
+    EditText Email_signup ;
+    EditText password_signup ;
+    EditText confirm_password ;
+    Button signUp ;
+    private FirebaseAuth mAuth;
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        //initialize user auth
+        mAuth = FirebaseAuth.getInstance();
+
+        // we have to do input validation here not on server side
+        Email_signup = findViewById(R.id.EmailAddress_input);
+        password_signup = findViewById(R.id.Password_input);
+        confirm_password = findViewById(R.id.confirm_password);
+        signUp = findViewById(R.id.submit);
+        // when validation is true sign the user up in firebase
+        signUp.setOnClickListener(v -> {
+            if(validateInputs()){
+                //get user data from edit text
+                String email=Email_signup.getText().toString();
+                String password=password_signup.getText().toString();
+                //sign the user in
+                signIn(email,password);
+            }
+        });
+    }
+
+    private boolean validateInputs() {
+        //if email doesn't match the email format anything@anithing.anything
+        if(! Email_signup.getText().toString().matches("^(.+)@(.+).(.+)$")){
+            //set error on the edit text
+            Email_signup.setError("Email is not valid");
+            //move courser to editText
+            Email_signup.requestFocus();
+            return false;
+        }else
+            Email_signup.setError(null);
+        ////if password is less than 6 digits give error
+        if(password_signup.getText().toString().length()<6){
+            password_signup.setError("password is short");
+            Email_signup.requestFocus();
+            return false;
+        }else
+            password_signup.setError(null);
+        // if the confirm docent match give error
+        if(!password_signup.getText().toString().equals(confirm_password.getText().toString())){
+            Email_signup.requestFocus();
+            password_signup.setError("passwords do not match");
+            return false;
+        }else
+            password_signup.setError(null);
+
+        return true;
+    }
+    // true validation input
+    private void signIn(String email,String password){
+        mAuth.createUserWithEmailAndPassword(email, password).addOnCompleteListener(this, task -> {
+            if (task.isSuccessful()) {
+                // Sign in success, update UI with the signed-in user's information
+                Toast.makeText(this, "Account Created", Toast.LENGTH_SHORT).show();
+                startActivity(new Intent(MainActivity.this,Home.class));
+                finish();
+            } else {
+                // If sign in fails, display a message to the user.
+                Log.w("TAG", "createUserWithEmail:failure", task.getException());
+                Toast.makeText(this, "Account Creation error", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+    }
