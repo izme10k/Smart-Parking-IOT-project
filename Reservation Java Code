@@ -1,0 +1,251 @@
+package com.example.smartparking;
+
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.TextView;
+import android.widget.TimePicker;
+import android.widget.Toast;
+
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
+import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Map;
+
+public class MyReservations extends AppCompatActivity {
+    DatabaseReference mDatabase; //initialize real time data base
+    FirebaseUser user;
+    boolean hasReserved;
+    Button cancel;
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_my_reservations);
+
+        mDatabase = FirebaseDatabase.getInstance().getReference();
+        user= FirebaseAuth.getInstance().getCurrentUser();
+        //remove reservation will only be visible when the user have already reserved
+        cancel = findViewById(R.id.cancel);
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                removeReservation();
+            }
+        });
+
+        TextView textView=findViewById(R.id.reservedTextView);
+        Button checkReserve = findViewById(R.id.check_Reserve);
+        checkReserve.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // create time picker to chose reservation time
+                TimePicker timePicker=new TimePicker(MyReservations.this);
+                //view the timepicker in a dialog
+                new MaterialAlertDialogBuilder(MyReservations.this)
+                        .setTitle("Pick the time")
+                        .setView(timePicker)
+                        .setPositiveButton("Reserve", (dialogInterface, i) -> {
+                            // the user can pick a time and make reservation
+                            doReservation(timePicker.getHour(),timePicker.getMinute());
+                        }).show();
+            }
+        });
+        //if any change happens in firebase update ui
+        mDatabase.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                int counter=0;
+                boolean flag=true;
+                for(DataSnapshot slot:snapshot.child("parks").child("park"+(counter+1)).child("status").getChildren()){
+                    String state=slot.child("state").getValue().toString();
+                    String name=slot.child("name").getValue().toString();
+                    String taken=slot.child("taken by").getValue().toString();
+                    String time=slot.child("time").getValue().toString();
+                    //if we find the user email in taken slots then he has a reservation
+                    if(user.getEmail().equals(taken)){
+                        //change the textView if user is found
+                        textView.setText("You Have "+name+" reserved at "+time+" o'clock");
+                        hasReserved=true;
+                        //hide the reserve button
+                        checkReserve.setVisibility(View.INVISIBLE);
+                        //view the cancel button
+                        cancel.setVisibility(View.VISIBLE);
+                        flag=false;
+                    }
+                    counter++;
+                }
+                //if the flag remained true then user doesn't have a reservation
+                if(flag){
+                    textView.setText("No Reservations yet");
+                    hasReserved=false;
+                    //view the reserve button
+                    checkReserve.setVisibility(View.VISIBLE);
+                }
+
+            }
+
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+            }
+        });
+
+
+        ImageButton back=findViewById(R.id.MyReservations_To_Home);
+        back.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                finish();
+            }
+        });
+    }
+
+    private void removeReservation() {
+        //get the main park data and save it in task
+        mDatabase.child("parks").child("park"+ 1).get().addOnCompleteListener(task -> {
+            if (!task.isSuccessful()) {
+                //if task is not successful then a server error accrued
+                Log.e("firebase", "Error getting data", task.getException());
+                Toast.makeText(MyReservations.this, "Database error", Toast.LENGTH_SHORT).show();
+            }
+            else {
+                //if task was successful get the number of available parks
+                int availableParks=Integer.parseInt(task.getResult().child("available").getValue().toString());
+                int counter=0;//this counter is to know which park we are at to remove its reservation
+                //the data snapshot park contains the status array
+                // so we loop on them to find user
+                for(DataSnapshot park:task.getResult().child("status").getChildren()){
+                    if(park.child("taken by").getValue().toString().equals(user.getEmail())){
+                        //if we found the email then remove reservation
+                        //update the park data on firebase
+                        Map<String,String> map=new HashMap<>();
+                        map.put("name",park.child("name").getValue().toString());
+                        map.put("state","free");
+                        map.put("taken by","none");
+                        map.put("time","00:00");
+                        mDatabase.child("parks")
+                                .child("park"+ 1)
+                                .child("status")
+                                .child(counter+"")
+                                .removeValue();
+
+                        mDatabase.child("parks")
+                                .child("park"+ 1)
+                                .child("status")
+                                .child(counter+"")
+                                .setValue(map);
+                        //inform the user that the change has happened
+                        Toast.makeText(this, "Your Reservation has been canceled", Toast.LENGTH_SHORT).show();
+                        //increment counter
+                        mDatabase.child("parks").child("park"+ 1).child("available").setValue((availableParks+1)+"");
+                        cancel.setVisibility(View.INVISIBLE);
+                        break;
+                    }
+                    counter++;
+                }
+            }
+        });
+    }
+
+
+    private void doReservation(int hour, int minute) {
+        mDatabase.child("parks").child("park"+ 1).get().addOnCompleteListener(task -> {
+            boolean freeNotFound=true;// this boolean is to check if no free parks were found
+            if (!task.isSuccessful()) {
+                //if task is not successful then a server error accrued
+                Log.e("firebase", "Error getting data", task.getException());
+                Toast.makeText(MyReservations.this, "Database error", Toast.LENGTH_SHORT).show();
+            }
+            else {
+                //if task was successful get the number of available parks
+                int availableParks=Integer.parseInt(task.getResult().child("available").getValue().toString());
+                int counter=0;//this counter is to know which park we are at to reserve it if it was free
+                for(DataSnapshot park:task.getResult().child("status").getChildren()){
+                    if(park.child("state").getValue().toString().equals("free")){
+                        //if we found free park change free not found to false because one was found
+                        freeNotFound=false;
+                        //update the park data on firebase
+                        updatePark(park,hour,minute,counter,availableParks);
+                        //inform the user that the change has happened
+                        String name=task.getResult().child("status").child(counter+"").child("name").getValue().toString();
+                        Toast.makeText(this, "Park "+name+" Reserved for 1 hour ", Toast.LENGTH_SHORT).show();
+                        //break so we don't reserve all available parks
+                        break;
+                    }
+                    counter++;
+                }
+                //if free was not found we search for a park that was reserved for more than one hour
+                if(freeNotFound){
+                    boolean found=false;//a boolean to check if we found any parks after loop end
+                    counter=0;//counter to know witch park we found
+                    for(DataSnapshot park:task.getResult().child("status").getChildren()){
+                        if(park.child("state").getValue().toString().equals("reserved") && anHourPassed(park.child("time").getValue().toString())){
+                            updatePark(park,hour,minute,counter,availableParks);
+                            found=true;
+                            break;
+                        }
+                        counter++;
+                    }
+                    // if we didn't even find a park that was reserved for more than one hour
+                    // we inform the user that no parks were found to reserve
+                    if(!found)
+                        Toast.makeText(this, "No available parks in this moment", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+
+    }
+
+    private boolean anHourPassed(String data) {
+        //split string data to hours and minutes
+        int reservedHour=Integer.parseInt(data.split(":")[0]);
+        int reservedMinute=Integer.parseInt(data.split(":")[1]);
+        // calendar object to get current time
+        Calendar calendar = Calendar.getInstance();
+        int currentMinute=calendar.get(Calendar.MINUTE);
+        int currentHour=calendar.get(Calendar.HOUR_OF_DAY);
+        //return if the differance between the current hour and reserved one is more than 1 hour
+        return (currentHour+(currentMinute/60f))-(reservedHour+(reservedMinute/60f))>1;
+    }
+
+    /**
+     * this function removes last parks data and adds the new data if availableParks was zero
+     * then we have taken a reserved park that was reserved for more than one hour so we dont
+     * decrement the availableParks counter**/
+    public void updatePark(DataSnapshot park,int hour,int minute,int counter,int availableParks){
+        Map<String,String> map=new HashMap<>();
+        map.put("name",park.child("name").getValue().toString());
+        map.put("state","reserved");
+        map.put("taken by",user.getEmail());
+        map.put("time",String.format("%02d:%02d", hour, minute));
+
+        mDatabase.child("parks")
+                .child("park"+ 1)
+                .child("status")
+                .child(counter+"")
+                .removeValue();
+
+        mDatabase.child("parks")
+                .child("park"+ 1)
+                .child("status")
+                .child(counter+"")
+                .setValue(map);
+
+        if(availableParks!=0){
+            mDatabase.child("parks").child("park"+ 1).child("available").setValue((availableParks-1)+"");
+        }
+    }
+}
