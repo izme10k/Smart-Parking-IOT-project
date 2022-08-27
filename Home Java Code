@@ -1,0 +1,62 @@
+package com.example.smartparking;
+
+import androidx.appcompat.app.AppCompatActivity;
+
+import android.content.Intent;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.ImageView;
+
+import com.google.firebase.auth.FirebaseAuth;
+
+public class Home extends AppCompatActivity {
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.home);
+
+        Button GO_TO_Reserve = findViewById(R.id.Reserve);
+        Button GO_TO_ABOUTUS = findViewById(R.id.AboutUs);
+        Button GO_TO_MyReservations = findViewById(R.id.Reservations);
+        Button logoutButton=findViewById(R.id.logoutButton);
+
+        //Intent that move you to " about us " page using normal button
+        GO_TO_ABOUTUS.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent About_us = new Intent(Home.this , AboutUs.class);
+                startActivity(About_us);
+            }
+        });
+
+        //Intent that move you to " Reserve " page using normal button
+        GO_TO_Reserve.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent Reserve = new Intent(Home.this , Reserve.class);
+                startActivity(Reserve);
+            }
+        });
+
+        //Intent to sign out from the account takes you to login page
+        logoutButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                FirebaseAuth.getInstance().signOut();
+                startActivity(new Intent(Home.this,login.class));
+                finish();
+            }
+        });
+        //Intent to sign out from the account takes you to MyReservation page
+        GO_TO_MyReservations.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent MyReservations = new Intent(Home.this , MyReservations.class);
+                startActivity(MyReservations);
+            }
+        });
+    }
+    }
